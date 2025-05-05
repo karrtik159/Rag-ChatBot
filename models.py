@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     """
     QDRANT_URL: str = config("QDRANT_URL", default="http://localhost:6333")
     QDRANT_API_KEY: Optional[str] = config("QDRANT_API_KEY", default=None)
-    OPENAI_API_KEY: str = config("OPENAI_API_KEY", default="")
+    OPENAI_API_KEY: str = config("OPENAI_API_KEY", default="sk-bshdbah")
     OPENAI_API_BASE_URL: str = config("OPENAI_API_BASE_URL", default="https://api.openai.com/v1")
     HF_TOKEN: Optional[str] = config("HF_TOKEN", default=None)
     COLLECTION_NAME: str = config("QDRANT_COLLECTION", default="documents")

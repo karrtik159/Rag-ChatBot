@@ -2,17 +2,16 @@
 """ChatbotManager – retrieval‑augmented generation with reranking and citations."""
 from __future__ import annotations
 
-import os
 from typing import List, Tuple
+from models import db_settings
 
-from langchain import PromptTemplate, OpenAI
+from langchain import PromptTemplate
+from langchain_openai import ChatOpenAI
 from langchain.schema import Document as LCDocument
 from langchain.vectorstores import Qdrant
 from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder
 from langchain.embeddings import HuggingFaceBgeEmbeddings
-
-from models import db_settings
 
 
 class ChatbotManager:
@@ -27,11 +26,11 @@ class ChatbotManager:
         # ------------------------------------------------------------------
         # LLM (OpenAI‑compatible) ------------------------------------------------
         # ------------------------------------------------------------------
-        self.llm = OpenAI(
-            model_name=llm_model or os.getenv("LLM_MODEL", "gpt-4o-mini"),
+        self.llm = ChatOpenAI(
+            model_name="gpt-4o-mini",
             temperature=llm_temperature,
-            openai_api_key=db_settings.OPENAI_API_KEY,
-            openai_api_base=db_settings.OPENAI_API_BASE_URL,
+            api_key=db_settings.OPENAI_API_KEY,
+            base_url=db_settings.OPENAI_API_BASE_URL,
         )
 
         # ------------------------------------------------------------------
@@ -50,8 +49,8 @@ class ChatbotManager:
         # Embeddings --------------------------------------------------------
         # ------------------------------------------------------------------
         self.embeddings = HuggingFaceBgeEmbeddings(
-            model_name=db_settings.EMBEDDING_MODEL_NAME,
-            model_kwargs={"device": os.getenv("EMBED_DEVICE", "cpu")},
+            model_name="BAAI/bge-small-en-v1.5",
+            model_kwargs={"device": "cpu"},
             encode_kwargs={"normalize_embeddings": True},
         )
 

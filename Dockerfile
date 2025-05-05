@@ -46,7 +46,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # ----- Copy application package -------------------------------------
 # Tree root already contains rag_chatbot/, pyproject.toml, etc.
-COPY ./ /code/
+COPY . /code/
 
 # Make package discoverable
 ENV PYTHONPATH="/code"
@@ -57,6 +57,6 @@ ENV PORT=8000
 
 # ─────────── entry‑point ───────────
 # Use uvicorn for dev; switch to gunicorn for prod if desired
-CMD ["uvicorn", "rag_chatbot.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 # For production, uncomment the line below and comment uvicorn:
-# CMD ["gunicorn", "rag_chatbot.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000"]
+# CMD ["gunicorn", "main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000"]
