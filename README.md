@@ -143,7 +143,12 @@ Switch to GPU or locally‑quantised LLM to speed things up / cut costs.
 * HTTPS, auth headers, and rate limiting can be added via a reverse proxy (Traefik / Nginx).
 
 ---
-
-## 📄 License
+Examples:
+- Embedding
+![alt text](image.png)
+- Query
+![alt text](image-1.png)
+---
+## 📄 License
 
 MIT — use, modify, and distribute as you please. Pull requests welcome!
