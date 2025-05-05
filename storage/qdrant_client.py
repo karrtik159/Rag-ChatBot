@@ -1,11 +1,10 @@
-# src/rag_chatbot/storage/qdrant_client.py
 import itertools
 from typing import List, Optional
 
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import VectorParams, Distance, PointStruct, Filter, FieldCondition, MatchValue
 
-from rag_chatbot.models import db_settings
+from models import db_settings
 
 # ──────────────── Init client & collection ────────────────
 client = QdrantClient(
@@ -15,16 +14,27 @@ client = QdrantClient(
 )
 
 VECTOR_SIZE = 384  # BGE‑small‑en v1.5
-if db_settings.COLLECTION_NAME not in [c.name for c in client.get_collections().collections]:
+
+client = QdrantClient(
+    url=db_settings.QDRANT_URL,
+    api_key=db_settings.QDRANT_API_KEY,
+    prefer_grpc=False,
+)
+
+VECTOR_SIZE = 384
+COL = db_settings.COLLECTION_NAME
+
+if COL not in [c.name for c in client.get_collections().collections]:
+    # 1) create collection
     client.create_collection(
-        collection_name=db_settings.COLLECTION_NAME,
+        collection_name=COL,
         vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
-        payload_schema={
-            "document_id": "keyword",
-            "page": "integer",
-            "is_ocr": "boolean",
-        },
     )
+    # 2) add payload indexes we care about
+    client.create_payload_index(COL, field_name="document_id", field_schema="keyword")
+    client.create_payload_index(COL, field_name="page", field_schema="integer")
+    client.create_payload_index(COL, field_name="is_ocr", field_schema="boolean")
+
 
 # ──────────────── Helper APIs ────────────────
 def upsert_points(points: List[PointStruct], batch: int = 1000) -> None:

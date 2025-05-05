@@ -1,113 +1,116 @@
+# rag_chatbot/services/chatbot_manager.py
+"""ChatbotManager – retrieval‑augmented generation with reranking and citations."""
+from __future__ import annotations
+
 import os
 from typing import List, Tuple
 
-from langchain import OpenAI, PromptTemplate
+from langchain import PromptTemplate, OpenAI
 from langchain.schema import Document as LCDocument
 from langchain.vectorstores import Qdrant
 from qdrant_client import QdrantClient
 from sentence_transformers import CrossEncoder
 from langchain.embeddings import HuggingFaceBgeEmbeddings
 
-from ..models import settings
+from models import db_settings
 
 
 class ChatbotManager:
+    """Wraps retrieval, reranking, and LLM generation logic."""
+
     def __init__(
         self,
-        llm_model: str = "Base_model",
+        llm_model: str | None = None,
         llm_temperature: float = 0.7,
         reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
-    ):
-        """
-        Initializes the ChatbotManager with OpenAI LLM, Qdrant vector store, and a reranker.
-        """
-        # OpenAI configuration
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        openai_api_base = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
-
+    ) -> None:
+        # ------------------------------------------------------------------
+        # LLM (OpenAI‑compatible) ------------------------------------------------
+        # ------------------------------------------------------------------
         self.llm = OpenAI(
-            model_name=llm_model,
+            model_name=llm_model or os.getenv("LLM_MODEL", "gpt-4o-mini"),
             temperature=llm_temperature,
-            openai_api_key=openai_api_key,
-            openai_api_base=openai_api_base,
+            openai_api_key=db_settings.OPENAI_API_KEY,
+            openai_api_base=db_settings.OPENAI_API_BASE_URL,
         )
 
-        # Prompt template for RAG
+        # ------------------------------------------------------------------
+        # Prompt template ---------------------------------------------------
+        # ------------------------------------------------------------------
         template = (
             "Use the following context to answer the question. "
-            "If you don't know, just say you don't know.\n"  
-            "Context:\n{context}\n---\nQuestion: {question}\nAnswer:"
+            "If you don't know the answer, just say you don't know.\n"  # noqa: E501
+            "\nContext:\n{context}\n---\nQuestion: {question}\nAnswer:"
         )
         self.prompt = PromptTemplate(
-            input_variables=["context", "question"],
-            template=template,
+            template=template, input_variables=["context", "question"]
         )
 
-        # Embeddings (HuggingFace BGE)
+        # ------------------------------------------------------------------
+        # Embeddings --------------------------------------------------------
+        # ------------------------------------------------------------------
         self.embeddings = HuggingFaceBgeEmbeddings(
-            model_name=settings.embedding_model_name,
-            model_kwargs={"device": "cpu"},
+            model_name=db_settings.EMBEDDING_MODEL_NAME,
+            model_kwargs={"device": os.getenv("EMBED_DEVICE", "cpu")},
             encode_kwargs={"normalize_embeddings": True},
         )
 
-        # Qdrant client and vector store
+        # ------------------------------------------------------------------
+        # Qdrant vector store ----------------------------------------------
+        # ------------------------------------------------------------------
         self.client = QdrantClient(
-            url=settings.qdrant_url,
-            api_key=settings.qdrant_api_key,
+            url=db_settings.QDRANT_URL,
+            api_key=db_settings.QDRANT_API_KEY,
             prefer_grpc=False,
         )
         self.db = Qdrant(
             client=self.client,
-            collection_name=settings.collection_name,
+            collection_name=db_settings.COLLECTION_NAME,
             embeddings=self.embeddings,
         )
-        # Default retriever: fetch top_k raw candidates
-        self.retriever = self.db.as_retriever(
-            search_kwargs={"k": settings.max_tokens // 100}
-        )
+        # Retriever: quick recall (k≈max_tokens/100) then rerank
+        k_initial = max(1, db_settings.MAX_TOKENS // 100)
+        self.retriever = self.db.as_retriever(search_kwargs={"k": k_initial})
 
-        # Reranker for fine-tuning top results
+        # ------------------------------------------------------------------
+        # Cross‑encoder reranker -------------------------------------------
+        # ------------------------------------------------------------------
         self.reranker = CrossEncoder(reranker_model)
 
+    # ----------------------------------------------------------------------
+    # Public interface -----------------------------------------------------
+    # ----------------------------------------------------------------------
     def get_response(
         self, query: str, top_k: int = 3
     ) -> Tuple[str, List[dict]]:
-        """
-        Executes a RAG query with initial retrieval, reranking, LLM answer, and citations.
-
-        Args:
-            query (str): The user question.
-            top_k (int): Number of final context passages to include.
-
-        Returns:
-            answer (str): LLM-generated answer.
-            citations (List[dict]): List of {{document_name, page}} for each passage used.
-        """
-        # 1) Retrieve initial candidates
+        """Return LLM answer and citations for user query."""
+        # 1️⃣ Retrieve coarse candidates
         docs: List[LCDocument] = self.retriever.get_relevant_documents(query)
         if not docs:
             return "I couldn't find relevant information.", []
 
-        # 2) Rerank using cross-encoder
-        pairs = [(query, doc.page_content) for doc in docs]
+        # 2️⃣ Rerank with cross‑encoder scores
+        pairs = [(query, d.page_content) for d in docs]
         scores = self.reranker.predict(pairs)
-        # Order docs by descending score
         ranked = sorted(zip(docs, scores), key=lambda x: x[1], reverse=True)
-        top_docs = [doc for doc, _ in ranked[:top_k]]
+        top_docs = [d for d, _ in ranked[:top_k]]
 
-        # 3) Build context string
+        # 3️⃣ Compose context for LLM
         context = "\n\n".join(
             f"Source: {d.metadata.get('document_name')} (page {d.metadata.get('page')})\n{d.page_content}"
             for d in top_docs
         )
-
-        # 4) Format prompt and get answer
         prompt_str = self.prompt.format(context=context, question=query)
+
+        # 4️⃣ Generate answer
         answer = self.llm(prompt_str)
 
-        # 5) Prepare citations
+        # 5️⃣ Build citations payload
         citations = [
-            {"document_name": d.metadata.get('document_name'), "page": d.metadata.get('page')}
+            {
+                "document_name": d.metadata.get("document_name"),
+                "page": d.metadata.get("page"),
+            }
             for d in top_docs
         ]
 

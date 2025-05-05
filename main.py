@@ -1,4 +1,4 @@
-# src/rag_chatbot/main.py
+
 import os
 import uuid
 from typing import List
@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from services.ingest_service import ingest_and_store
-from services.chatbot_manager import ChatbotManager
+from services.rag_assistant import ChatbotManager
 from models import QueryRequest, QueryResponse
 
 # Initialize FastAPI app
@@ -31,7 +31,7 @@ app.add_middleware(
 chatbot_manager = ChatbotManager()
 
 
-@app.post("/ingest")
+@app.post("/api/embedding")
 async def ingest_document(file: UploadFile = File(...)):
     """
     Endpoint to ingest a document and store its embeddings in Qdrant.
@@ -75,7 +75,7 @@ async def ingest_document(file: UploadFile = File(...)):
             os.remove(temp_path)
 
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/api/query", response_model=QueryResponse)
 async def query_documents(request: QueryRequest):
     """
     Endpoint to query the RAG-indexed documents and return answers with citations.
@@ -92,7 +92,7 @@ async def query_documents(request: QueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/health")
+@app.get("/api/health")
 async def health_check():
     """
     Simple health check endpoint.

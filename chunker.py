@@ -1,5 +1,3 @@
-# src/rag_chatbot/chunker.py
-
 from typing import List
 import tiktoken
 

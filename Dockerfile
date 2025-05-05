@@ -1,27 +1,31 @@
-# ────────── requirements stage ──────────
+###############################################################################
+# Stage 1 – build requirements with Poetry
+###############################################################################
 FROM python:3.11-slim AS requirements-stage
 
 WORKDIR /tmp
 
-# System libs needed by pdfplumber / Tesseract OCR
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      tesseract-ocr \
-      poppler-utils \
-      build-essential \
- && rm -rf /var/lib/apt/lists/*
+# ----- OS libraries needed for pdfplumber & Tesseract OCR ------------
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        tesseract-ocr \
+        poppler-utils \
+        build-essential && \
+    rm -rf /var/lib/apt/lists/*
 
-# Poetry + export plugin
+# Poetry + export plug‑in
 RUN pip install --no-cache-dir poetry poetry-plugin-export
 
-# Copy lock‑files from repo
-COPY ./pyproject.toml ./poetry.lock* /tmp/
+# Copy lock files only
+COPY pyproject.toml poetry.lock* /tmp/
 
-# Export production‑only requirements
-RUN poetry export -f requirements.txt --without-hashes -o requirements.txt
+# Export prod requirements (no dev, no hashes → smaller image)
+RUN poetry export -f requirements.txt -o requirements.txt --without-hashes
 
 
-# ────────── final image ──────────
+###############################################################################
+# Stage 2 – runtime image
+###############################################################################
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -29,25 +33,30 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /code
 
-# Install system libs again (runtime)
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-      tesseract-ocr \
-      poppler-utils \
- && rm -rf /var/lib/apt/lists/*
+# Runtime system libraries (OCR & PDF rendering)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        tesseract-ocr \
+        poppler-utils && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Python deps
-COPY --from=requirements-stage /tmp/requirements.txt /code/requirements.txt
-RUN pip install --no-cache-dir -r /code/requirements.txt
+COPY --from=requirements-stage /tmp/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source
-COPY ./ /code
-ENV PYTHONPATH=/code
+# ----- Copy application package -------------------------------------
+# Tree root already contains rag_chatbot/, pyproject.toml, etc.
+COPY ./ /code/
 
-# Default port
+# Make package discoverable
+ENV PYTHONPATH="/code"
+
+# Expose default port
+EXPOSE 8000
 ENV PORT=8000
 
-# ────────── launch ──────────
-# Swap to gunicorn line for prod as needed
+# ─────────── entry‑point ───────────
+# Use uvicorn for dev; switch to gunicorn for prod if desired
 CMD ["uvicorn", "rag_chatbot.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# For production, uncomment the line below and comment uvicorn:
 # CMD ["gunicorn", "rag_chatbot.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000"]

@@ -1,4 +1,3 @@
-# src/rag_chatbot/embedder.py
 """Embedder utility — generates dense vectors for text using either
 1. Local Sentence‑Transformer (default) or
 2. Hugging Face Inference API (fallback).
