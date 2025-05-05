@@ -52,26 +52,31 @@ db_settings = Settings()
 
 # ──────────────── Request/Response Schemas ────────────────
 
-class DocumentIngestionRequest(BaseModel):
-    """
-    Payload for requesting document ingestion.
-    """
-    file_path: str
-document_id: Optional[str] = None
 
 class QueryRequest(BaseModel):
     """
-    Payload for querying the RAG system.
+    Body for POST /api/query
     """
     query: str = Field(..., min_length=1, max_length=1000)
+    document_id: Optional[str] = None
     top_k: int = Field(default=3, ge=1, le=10)
+    require_citations: bool = True
+    conversation_id: Optional[str] = None
+
+
+class Citation(BaseModel):
+    document_name: str
+    page: Optional[int] = None
+
 
 class QueryResponse(BaseModel):
     """
-    Response from the RAG query endpoint.
+    Successful /api/query reply.
+    Mirrors the spec: {status, response{answer,citations}, conversation_id}
     """
-    query: str
-    results: List[Dict[str, Any]]
+    status: str = "success"
+    response: Dict[str, Any]  # keys: answer, citations?
+    conversation_id: str
 
 # ──────────────── Core Data Models ────────────────
 

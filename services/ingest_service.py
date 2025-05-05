@@ -1,69 +1,104 @@
 import logging
+import itertools
 from typing import List
+
+from qdrant_client.http.models import PointStruct
+
 from parsers import pdf_parser, docx_parser, txt_parser
 from chunker import chunk_text
 from embedder import embed_text
 from storage.qdrant_client import upsert_points
-from qdrant_client.http.models import PointStruct
+from models import RawEntry, Chunk
 
 logger = logging.getLogger(__name__)
 
 
-def ingest_and_store(path: str, document_id: str) -> int:
+def _dict_to_raw(entry: dict, fallback_index: int) -> RawEntry:
+    """Coerce legacy parser dicts into `RawEntry` objects."""
+    return RawEntry(
+        document_name=entry.get("document_name", "unknown"),
+        page=entry.get("page"),
+        text=entry.get("text", ""),
+        is_ocr=entry.get("is_ocr", False),
+        source=entry.get("source", "unknown"),
+        chunk_index=entry.get("chunk_index", fallback_index),
+    )
+
+
+def _grouper(iterable, size):
+    """Yield successive lists of length ≤ size."""
+    it = iter(iterable)
+    while True:
+        chunk = list(itertools.islice(it, size))
+        if not chunk:
+            break
+        yield chunk
+
+
+def ingest_and_store(path: str, document_id: str, batch: int = 1000) -> int:
+    """Parse file → chunk → embed → upsert to Qdrant.
+
+    Returns the number of vectors stored.
     """
-    Ingests a document from the given path, chunks its content, embeds each chunk,
-    and upserts the resulting vectors with metadata to Qdrant.
 
-    Args:
-        path (str): Filesystem path of the document to ingest.
-        document_id (str): Unique identifier to tag all chunks of this document.
-
-    Returns:
-        int: Total number of vector points upserted to Qdrant.
-
-    Raises:
-        ValueError: If the file extension is unsupported or ingestion yields no entries.
-    """
-    # Determine which parser to use
-    ext = path.rsplit('.', 1)[-1].lower()
-    if ext == 'pdf':
-        entries = pdf_parser.ingest_pdf(path)
-    elif ext == 'docx':
-        entries = docx_parser.ingest_docx(path)
-    elif ext == 'txt':
-        entries = txt_parser.ingest_txt(path)
+    # 1️⃣  Detect file type & parse -------------------------------------------------
+    ext = path.rsplit(".", 1)[-1].lower()
+    if ext == "pdf":
+        raw_entries = pdf_parser.ingest_pdf(path)
+    elif ext == "docx":
+        raw_entries = docx_parser.ingest_docx(path)
+    elif ext == "txt":
+        raw_entries = txt_parser.ingest_txt(path)
     else:
-        logger.error(f"Unsupported file extension: {ext}")
+        logger.error("Unsupported extension: %s", ext)
         raise ValueError(f"Unsupported document type: {ext}")
 
-    if not entries:
-        logger.warning(f"No entries extracted from document: {path}")
+    if not raw_entries:
+        logger.warning("No extractable text in %s", path)
         return 0
 
-    # Split raw entries into overlapping chunks
-    chunks = chunk_text(entries)
+    # Coerce to RawEntry (parsers may still return dicts)
+    entries: List[RawEntry] = [
+        _dict_to_raw(e, idx) if not isinstance(e, RawEntry) else e
+        for idx, e in enumerate(raw_entries)
+    ]
+    # after raw_entries fetched
+    # entries: List[RawEntry] = [
+    #     _dict_to_raw(e, idx) if not isinstance(e, RawEntry) else e
+    #     for idx, e in enumerate(raw_entries)
+    # ]
+
+    # 2️⃣  Chunk -------------------------------------------------------------------
+    chunks: List[Chunk] = chunk_text(entries)
     if not chunks:
-        logger.warning(f"Chunking produced no data for document: {path}")
+        logger.warning("Chunker produced zero output for %s", path)
         return 0
 
-    # Prepare points for Qdrant upsert
+    # 3️⃣  Embed + build PointStructs -----------------------------------
     points: List[PointStruct] = []
-    for chunk in chunks:
-        vector = embed_text(chunk.text)
-        payload = chunk.dict()
-        payload['document_id'] = document_id
-        # Construct a deterministic unique ID for each sub-chunk
-        point_id = f"{document_id}-{chunk.chunk_index}-{chunk.sub_chunk_index}"
+
+    for idx, ch in enumerate(chunks):
+        vec = embed_text(ch.text)
+
+        # convert Pydantic → dict, then rename `text` → `page_content`
+        payload = ch.model_dump()
+        payload["page_content"] = payload.pop("text")          # ← crucial
+        payload["document_id"] = document_id
+
         points.append(
             PointStruct(
-                id=point_id,
-                vector=vector,
-                payload=payload
+                id=idx,         # unsigned‑int ID
+                vector=vec,
+                payload=payload,
             )
         )
 
-    # Upsert in a single batch (Qdrant client can batch internally)
-    upsert_points(points)
-    logger.info(f"Upserted {len(points)} chunks for document {document_id}")
+
+
+
+    # 4️⃣  Batched upsert ----------------------------------------------------------
+    for chunk in _grouper(points, batch):
+        upsert_points(chunk)
+    logger.info("Ingested %d chunks for %s", len(points), document_id)
 
     return len(points)

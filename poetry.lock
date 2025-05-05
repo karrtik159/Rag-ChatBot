@@ -1992,6 +1992,25 @@ tenacity = ">=8.1.0,<8.4.0 || >8.4.0,<10.0.0"
 typing-extensions = ">=4.7"
 
 [[package]]
+name = "langchain-huggingface"
+version = "0.1.2"
+description = "An integration package connecting Hugging Face and LangChain"
+optional = false
+python-versions = "<4.0,>=3.9"
+groups = ["main"]
+files = [
+    {file = "langchain_huggingface-0.1.2-py3-none-any.whl", hash = "sha256:7de5cfcae32bfb6a99c084fc16176f02583a4f8d94febb6bb45bed5b34699174"},
+    {file = "langchain_huggingface-0.1.2.tar.gz", hash = "sha256:4a66d5c449298fd353bd84c9ed01f9bf4303bf2e4ffce14aab8c55c584eee57c"},
+]
+
+[package.dependencies]
+huggingface-hub = ">=0.23.0"
+langchain-core = ">=0.3.15,<0.4.0"
+sentence-transformers = ">=2.6.0"
+tokenizers = ">=0.19.1"
+transformers = ">=4.39.0"
+
+[[package]]
 name = "langchain-ollama"
 version = "0.3.2"
 description = "An integration package connecting Ollama and LangChain"
@@ -2023,6 +2042,26 @@ files = [
 langchain-core = ">=0.3.58,<1.0.0"
 openai = ">=1.68.2,<2.0.0"
 tiktoken = ">=0.7,<1"
+
+[[package]]
+name = "langchain-qdrant"
+version = "0.2.0"
+description = "An integration package connecting Qdrant and LangChain"
+optional = false
+python-versions = "<4,>=3.9"
+groups = ["main"]
+files = [
+    {file = "langchain_qdrant-0.2.0-py3-none-any.whl", hash = "sha256:8eab5b8a553204ddb809d8183a6f1bc12fc265688592d9d897388f6939c79bf8"},
+    {file = "langchain_qdrant-0.2.0.tar.gz", hash = "sha256:41b8573cbb1b4706f76dc769251d8e6b3e4107ecd5fa97c58141977ec19fba75"},
+]
+
+[package.dependencies]
+langchain-core = ">=0.2.43,<0.3.0 || >0.3.0,<0.3.1 || >0.3.1,<0.3.2 || >0.3.2,<0.3.3 || >0.3.3,<0.3.4 || >0.3.4,<0.3.5 || >0.3.5,<0.3.6 || >0.3.6,<0.3.7 || >0.3.7,<0.3.8 || >0.3.8,<0.3.9 || >0.3.9,<0.3.10 || >0.3.10,<0.3.11 || >0.3.11,<0.3.12 || >0.3.12,<0.3.13 || >0.3.13,<0.3.14 || >0.3.14,<0.4.0"
+pydantic = ">=2.7.4,<3.0.0"
+qdrant-client = ">=1.10.1,<2.0.0"
+
+[package.extras]
+fastembed = ["fastembed (>=0.3.3,<0.4.0) ; python_version >= \"3.9\" and python_version < \"3.13\""]
 
 [[package]]
 name = "langchain-text-splitters"
@@ -4036,6 +4075,18 @@ files = [
 dev = ["backports.zoneinfo ; python_version < \"3.9\"", "black", "build", "freezegun", "mdx_truly_sane_lists", "mike", "mkdocs", "mkdocs-awesome-pages-plugin", "mkdocs-gen-files", "mkdocs-literate-nav", "mkdocs-material (>=8.5)", "mkdocstrings[python]", "msgspec ; implementation_name != \"pypy\"", "mypy", "orjson ; implementation_name != \"pypy\"", "pylint", "pytest", "tzdata", "validate-pyproject[all]"]
 
 [[package]]
+name = "python-multipart"
+version = "0.0.20"
+description = "A streaming multipart parser for Python"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "python_multipart-0.0.20-py3-none-any.whl", hash = "sha256:8a62d3a8335e06589fe01f2a3e178cdcc632f3fbe0d492ad9ee0ec35aab1f104"},
+    {file = "python_multipart-0.0.20.tar.gz", hash = "sha256:8dd0cab45b8e23064ae09147625994d090fa46f5b0d1e13af944c331a7fa9d13"},
+]
+
+[[package]]
 name = "pytz"
 version = "2025.2"
 description = "World timezone definitions, modern and historical"
@@ -5890,4 +5941,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "21238cfa6a357cb65dad0195be8226c970ac5ca3ed5da12bb0bc9a5377f88df3"
+content-hash = "61aa588d8b3ad1f87a2c56e6523dd0c39e8c8fecc7222e0ee2afcde15ca1cdef"

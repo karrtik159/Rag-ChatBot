@@ -2,91 +2,93 @@
 1. Local Sentence‑Transformer (default) or
 2. Hugging Face Inference API (fallback).
 
-Configure behaviour with environment variables:
-- EMBEDDING_MODEL (model name, defaults in models.py)
-- USE_HF_INFERENCE_API ("true"/"false")
-- HF_TOKEN (required if using HF Inference API)
+Fix: previously calling `.tolist()` on a Python list raised `AttributeError`.
+The code now detects ndarray vs list and coerces correctly.
 """
 from __future__ import annotations
 
-import os
 import logging
-from typing import List
+from typing import List, Sequence
 
 import requests
 from sentence_transformers import SentenceTransformer
+import numpy as np
 
 from models import db_settings
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# ────────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 # Local Sentence‑Transformer model
-# ────────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────────────────
 try:
     _local_model: SentenceTransformer | None = SentenceTransformer(
-        db_settings.EMBEDDING_MODEL_NAME,
-        trust_remote_code=True,
+        db_settings.EMBEDDING_MODEL_NAME, trust_remote_code=True
     )
-    logger.info(
-        "Loaded local embedding model '%s'.", db_settings.EMBEDDING_MODEL_NAME
-    )
+    logger.info("Loaded local embedding model '%s'", db_settings.EMBEDDING_MODEL_NAME)
 except Exception as exc:  # pragma: no cover
     logger.warning("Failed to load local embedding model: %s", exc)
     _local_model = None
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Hugging Face Inference‑API fallback configuration
-# ────────────────────────────────────────────────────────────────────────────────
-_USE_HF_API = os.getenv("USE_HF_INFERENCE_API", "false").lower() == "true"
+# ──────────────────────────────────────────────────────────────────────────────
+# Hugging Face Inference API fallback
+# ──────────────────────────────────────────────────────────────────────────────
+_USE_HF_API = "false"
 _HF_TOKEN = db_settings.HF_TOKEN
 _HF_ENDPOINT = (
-    f"https://api-inference.huggingface.co/pipeline/feature-extraction/"
-    f"{db_settings.EMBEDDING_MODEL_NAME}"
+    "https://api-inference.huggingface.co/pipeline/feature-extraction/"
+    + db_settings.EMBEDDING_MODEL_NAME
 )
-
 if _USE_HF_API and not _HF_TOKEN:
-    raise RuntimeError(
-        "USE_HF_INFERENCE_API is true but HF_TOKEN is not provided in environment"
-    )
+    raise RuntimeError("USE_HF_INFERENCE_API true but HF_TOKEN missing")
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Internal helper for HF API calls
-# ────────────────────────────────────────────────────────────────────────────────
 
-def _embed_via_hf(texts: List[str]) -> List[List[float]]:
+def _embed_via_hf(texts: Sequence[str]) -> List[List[float]]:
+    """Call HF Inference endpoint and return list of vectors."""
     headers = {"Authorization": f"Bearer {_HF_TOKEN}"}
-    payload = {"inputs": texts, "options": {"wait_for_model": True}}
-    resp = requests.post(_HF_ENDPOINT, headers=headers, json=payload, timeout=30)
+    resp = requests.post(
+        _HF_ENDPOINT,
+        headers=headers,
+        json={"inputs": list(texts), "options": {"wait_for_model": True}},
+        timeout=60,
+    )
     if resp.status_code != 200:
-        raise RuntimeError(
-            f"HF inference API error {resp.status_code}: {resp.text}"
-        )
-    return resp.json()
+        raise RuntimeError(f"HF Inference API {resp.status_code}: {resp.text}")
+    return resp.json()  # already list[list[float]]
 
-# ────────────────────────────────────────────────────────────────────────────────
-# Public API
-# ────────────────────────────────────────────────────────────────────────────────
 
-def embed_text(text: str | List[str]) -> List[float] | List[List[float]]:
-    """Generate embedding(s) for text.
+# Normalise numpy → python list
 
-    Accepts either a single string or a list of strings. Returns a single
-    vector (list) or a list of vectors accordingly.
-    """
-    single = isinstance(text, str)
-    sentences = [text] if single else list(text)  # type: ignore[arg-type]
+def _to_list(vec) -> List[float]:
+    if isinstance(vec, list):
+        return vec
+    if isinstance(vec, np.ndarray):
+        return vec.astype(float).tolist()
+    raise TypeError(f"Unexpected vector type {type(vec)}")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Public function
+# ──────────────────────────────────────────────────────────────────────────────
+
+def embed_text(text: str | Sequence[str]) -> List[float] | List[List[float]]:
+    """Generate embedding(s) for a single string or a list of strings."""
+    is_single = isinstance(text, str)
+    sentences: List[str] = [text] if is_single else list(text)  # type: ignore[arg-type]
 
     try:
         if _USE_HF_API or _local_model is None:
             vectors = _embed_via_hf(sentences)
         else:
-            vectors = (
-                _local_model.encode(sentences, convert_to_numpy=False)  # type: ignore
-            ).tolist()
+            # We request numpy for easy dtype management
+            raw = _local_model.encode(sentences, convert_to_numpy=True)
+            if raw.ndim == 1:
+                vectors = [_to_list(raw)]
+            else:
+                vectors = [_to_list(row) for row in raw]
     except Exception as exc:
-        logger.error("Error generating embedding: %s", exc)
-        raise
+        logger.exception("Embedding failed")
+        raise RuntimeError("Embedding generation error") from exc
 
-    return vectors[0] if single else vectors
+    return vectors[0] if is_single else vectors

@@ -4,7 +4,6 @@
 FROM python:3.11-slim AS requirements-stage
 
 WORKDIR /tmp
-
 # ----- OS libraries needed for pdfplumber & Tesseract OCR ------------
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -32,6 +31,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
 WORKDIR /code
+RUN mkdir rag-chatbot
 
 # Runtime system libraries (OCR & PDF rendering)
 RUN apt-get update && \
@@ -46,10 +46,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # ----- Copy application package -------------------------------------
 # Tree root already contains rag_chatbot/, pyproject.toml, etc.
-COPY . /code/
+COPY . /code/rag-chatbot
 
 # Make package discoverable
-ENV PYTHONPATH="/code"
+ENV PYTHONPATH="/code/rag-chatbot"
 
 # Expose default port
 EXPOSE 8000
@@ -57,6 +57,6 @@ ENV PORT=8000
 
 # ─────────── entry‑point ───────────
 # Use uvicorn for dev; switch to gunicorn for prod if desired
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "rag-chatbot.main:app", "--host", "0.0.0.0", "--port", "8000"]
 # For production, uncomment the line below and comment uvicorn:
-# CMD ["gunicorn", "main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000"]
+# CMD ["gunicorn", "rag-chatbot.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000"]
